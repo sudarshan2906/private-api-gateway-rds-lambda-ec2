@@ -1,7 +1,7 @@
 import pymysql
 import boto3
 
-client = boto3.client('rds')
+client = boto3.client('rds', region_name='ap-south-1')
 
 
 class Database:

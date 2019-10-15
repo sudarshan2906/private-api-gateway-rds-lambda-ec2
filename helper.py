@@ -16,14 +16,15 @@ PASSWORD = "admin123"
 LAMBDA_FUNCTION_NAME = "lambdafunction"
 API_NAME = "ApiGateway"
 HOSTING_S3_NAME = "www.week3-website.com"
+REGION = "ap-south-1"
 
 
 # uploading templates and job file to S3
 
 def upload_template_python_scripts():
-    s3 = boto3.resource('s3')
+    s3 = boto3.client('s3', region_name=REGION)
     try:
-        s3.create_bucket(Bucket=DATA_BUCKET, CreateBucketConfiguration={'LocationConstraint': 'ap-south-1'})
+        s3.create_bucket(Bucket=DATA_BUCKET, CreateBucketConfiguration={'LocationConstraint': REGION})
     except ClientError as ce:
         if ce.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
             print("Data Bucket Already Created")

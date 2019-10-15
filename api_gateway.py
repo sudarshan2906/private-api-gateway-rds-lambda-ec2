@@ -1,6 +1,6 @@
 import boto3
 
-client = boto3.client('apigateway')
+client = boto3.client('apigateway', region_name="ap-south-1")
 
 
 class Api:

@@ -1,4 +1,4 @@
-# A Simple Website hosted in S3;
+# A Simple Website hosted in S3
 This project Consist of a Simple UI hosted in Aws S3. This website takes customer Id as input and passes it to api
 gateway which invokes a lambda function. This lambda function access the database created in rds mysql and return the
 number of transaction and sum of amount back to website.

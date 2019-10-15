@@ -2,9 +2,8 @@ import boto3
 import time
 from botocore.client import ClientError
 
-client = boto3.client('cloudformation')
-s3 = boto3.resource('s3')
-client_glue = boto3.client('glue')
+client = boto3.client('cloudformation', region_name='ap-south-1')
+s3 = boto3.resource('s3', region_name='ap-south-1')
 
 
 class Stack:
