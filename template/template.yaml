@@ -3,10 +3,19 @@ Description: "-"
 Parameters:
   DataBaseName:
     Type: String
+  DbInstanceIdentifier:
+    Type: String
+  LambdaFunctionName:
+    Type: String
+  ApiName:
+    Type: String
+  S3Name:
+    Type: String
 Resources:
   DataBase:
     Type: "AWS::RDS::DBInstance"
     Properties:
+      DBInstanceIdentifier: !Ref DbInstanceIdentifier
       AllocatedStorage: "20"
       DBInstanceClass: db.t2.micro
       Engine: MySQL
@@ -14,3 +23,126 @@ Resources:
       MasterUsername: "admin"
       MasterUserPassword: "admin123"
       DBName: !Ref DataBaseName
+  ApiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: A test API
+      Name: !Ref ApiName
+      EndpointConfiguration:
+        Types:
+        - "REGIONAL"
+  GetMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt
+        - ApiGateway
+        - RootResourceId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Join ["", ["arn:aws:apigateway:ap-south-1:lambda:path/2015-03-31/functions/",!GetAtt LambdaFunction.Arn,"/invocations"]]
+        RequestTemplates:
+          application/json: |
+            {
+            "customer_id" : $input.params('customer_id')
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        Credentials: !GetAtt ApiRole.Arn
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: ApiRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+        Version: 2012-10-17
+      Path: /
+      Policies:
+        - PolicyName: ApiPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "logs:*"
+                Resource: "*"
+              - Effect: Allow
+                  Action: "lambda:InvokeFunction"
+                  Resource: !GetAtt LambdaFunction.Arn
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: lambdarole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      Path: /
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "rds:Describe*"
+                  - "rds:List*"
+                  - "rds:Download*"
+                Resource: !Sub arn:aws:rds:*:*:db${DbInstanceIdentifier}
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Code:
+        S3Bucket: 'data-bucket-063'
+        S3Key: 'lambda_function.zip'
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Layers:
+        - arn:aws:lambda:ap-south-1:193175317457:layer:pymysql:4
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref S3Name
+      MetricsConfigurations:
+        - Id: EntireBucket
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Action:
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource: !Sub arn:aws:s3:::${S3Name}/*
+            Principal: "*"

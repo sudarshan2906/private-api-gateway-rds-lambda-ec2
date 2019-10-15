@@ -8,8 +8,14 @@ client_glue = boto3.client('glue')
 
 
 class Stack:
-    def __init__(self, parameter):
-        self.parameter = parameter
+    def __init__(self, stack_name, template_url,database_name,db_instance_identifier,lambda_function_name,api_name,hosting_s3_name):
+        self.stack_name = stack_name
+        self.template_url = template_url
+        self.database_name = database_name
+        self.db_instance_identifier = db_instance_identifier
+        self.lambda_function_name = lambda_function_name
+        self.api_name = api_name
+        self.hosting_s3_name = hosting_s3_name
 
     # if stack is in rollback stage then stack get deleted and then it gets created.
     # if stack is in create stage then it gets updated
@@ -19,7 +25,7 @@ class Stack:
         if status == 'ROLLBACK_COMPLETE' or status == 'ROLLBACK_FAILED' or status == 'UPDATE_ROLLBACK_COMPLETE' or \
                 status == 'DELETE_FAILED':
             self.delete_object()
-            client.delete_stack(StackName=self.parameter["stack_name"])
+            client.delete_stack(StackName=self.stack_name)
             print("deleting stack")
             while self.status_stack() == 'DELETE_IN_PROGRESS':
                 time.sleep(2)
@@ -42,13 +48,29 @@ class Stack:
     def create_stack(self):
         try:
             client.create_stack(
-                StackName=self.parameter["stack_name"],
-                TemplateURL=self.parameter["template_url"],
+                StackName=self.stack_name,
+                TemplateURL=self.template_url,
                 Capabilities=['CAPABILITY_NAMED_IAM'],
                 Parameters=[
                     {
                         'ParameterKey': "DataBaseName",
-                        'ParameterValue': self.parameter["database_name"]
+                        'ParameterValue': self.database_name
+                    },
+                    {
+                        'ParameterKey': "DbInstanceIdentifier",
+                        'ParameterValue': self.db_instance_identifier
+                    },
+                    {
+                        'ParameterKey': "LambdaFunctionName",
+                        'ParameterValue': self.lambda_function_name
+                    },
+                    {
+                        'ParameterKey': "ApiName",
+                        'ParameterValue': self.api_name
+                    },
+                    {
+                        'ParameterKey': "S3Name",
+                        'ParameterValue': self.hosting_s3_name
                     }
                 ]
             )
@@ -59,13 +81,29 @@ class Stack:
     def update_stack(self):
         try:
             client.update_stack(
-                StackName=self.parameter["stack_name"],
-                TemplateURL=self.parameter["template_url"],
+                StackName=self.stack_name,
+                TemplateURL=self.template_url,
                 Capabilities=['CAPABILITY_NAMED_IAM'],
                 Parameters=[
                     {
                         'ParameterKey': "DataBaseName",
-                        'ParameterValue': self.parameter["database_name"]
+                        'ParameterValue': self.database_name
+                    },
+                    {
+                        'ParameterKey': "DbInstanceIdentifier",
+                        'ParameterValue': self.db_instance_identifier
+                    },
+                    {
+                        'ParameterKey': "LambdaFunctionName",
+                        'ParameterValue': self.lambda_function_name
+                    },
+                    {
+                        'ParameterKey': "ApiName",
+                        'ParameterValue': self.api_name
+                    },
+                    {
+                        'ParameterKey': "S3Name",
+                        'ParameterValue': self.hosting_s3_name
                     }
                 ]
             )
@@ -78,7 +116,7 @@ class Stack:
 
     def status_stack(self):
         try:
-            stack = client.describe_stacks(StackName=self.parameter["stack_name"])
+            stack = client.describe_stacks(StackName=self.stack_name)
             status = stack['Stacks'][0]['StackStatus']
             return status
         except ClientError as ce:
@@ -90,8 +128,11 @@ class Stack:
 
     def delete_object(self):
         try:
-            bucket = s3.Bucket(self.parameter["bucket_name"])
+            bucket = s3.Bucket(self.hosting_s3_name)
             bucket.objects.all().delete()
         except ClientError as ce:
-            print(ce)
-            exit()
+            if ce.response['Error']['Code'] == 'NoSuchBucket':
+                print(ce)
+            else:
+                print(ce)
+                exit()
