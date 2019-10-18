@@ -1,11 +1,10 @@
 import pymysql
 import boto3
 
-client = boto3.client('rds', region_name='ap-south-1')
-
 
 class Database:
-    def __init__(self, db_instance_identifier, username, password, database_name):
+    def __init__(self, db_instance_identifier, username, password, database_name, region):
+        self.client_rds = boto3.client('rds', region_name=region)
         try:
             self.db_instance_identifier = db_instance_identifier
             self.host = self.get_host()
@@ -19,7 +18,7 @@ class Database:
             exit()
 
     def get_host(self):
-        instances = client.describe_db_instances(DBInstanceIdentifier=self.db_instance_identifier)
+        instances = self.client_rds.describe_db_instances(DBInstanceIdentifier=self.db_instance_identifier)
         return instances.get('DBInstances')[0]['Endpoint']['Address']
 
     def create_table(self):

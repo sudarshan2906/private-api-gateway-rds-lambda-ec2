@@ -84,8 +84,8 @@ Resources:
                 Action: "logs:*"
                 Resource: "*"
               - Effect: Allow
-                  Action: "lambda:InvokeFunction"
-                  Resource: !GetAtt LambdaFunction.Arn
+                Action: "lambda:InvokeFunction"
+                Resource: !GetAtt LambdaFunction.Arn
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
