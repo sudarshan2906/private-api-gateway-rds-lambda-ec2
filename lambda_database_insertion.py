@@ -1,0 +1,86 @@
+import pymysql
+import json
+import os
+import boto3
+
+db_instance_identifier = os.environ['db_instance_identifier']
+USERNAME = os.environ['username']
+PASSWORD = os.environ['password']
+DATA_BASE_NAME = os.environ['database_name']
+
+
+def handler(event, context):
+    try:
+        client_rds = boto3.client('rds')
+        instances = client_rds.describe_db_instances(DBInstanceIdentifier=db_instance_identifier)
+        host = instances.get('DBInstances')[0]['Endpoint']['Address']
+        conn = pymysql.connect(host,
+                               user=USERNAME,
+                               passwd=PASSWORD,
+                               db=DATA_BASE_NAME,
+                               connect_timeout=5)
+    except pymysql.MySQLError as e:
+        print(e)
+        exit()
+    with conn.cursor() as cur:
+        cur.execute(
+            "create table IF NOT EXISTS Customer("
+            "customer_id int NOT NULL PRIMARY KEY,"
+            "name varchar(50) NOT NULL)")
+        cur.execute(
+            "create table IF NOT EXISTS Account("
+            "account_number int NOT NULL PRIMARY KEY,"
+            "customer_id int NOT NULL, FOREIGN KEY(customer_id) REFERENCES Customer(customer_id))")
+        cur.execute(
+            "create table IF NOT EXISTS Transaction("
+            "transaction_id int NOT NULL PRIMARY KEY,"
+            "sender_account_number int NOT NULL,"
+            "receiver_account_number int NOT NULL,"
+            "amount int NOT NULL,"
+            "FOREIGN KEY(sender_account_number) REFERENCES Account(account_number),"
+            "FOREIGN KEY(receiver_account_number) REFERENCES Account(account_number))")
+        cur.execute('insert into Customer (customer_id, name) values(101, "Joe")')
+        cur.execute('insert into Customer (customer_id, name) values(102, "Olivia")')
+        cur.execute('insert into Customer (customer_id, name) values(103, "George")')
+        cur.execute('insert into Customer (customer_id, name) values(104, "Emily")')
+        cur.execute('insert into Customer (customer_id, name) values(105, "Leo")')
+        conn.commit()
+        cur.execute('insert into Account (account_number, customer_id) values(201, 101)')
+        cur.execute('insert into Account (account_number, customer_id) values(202, 101)')
+        cur.execute('insert into Account (account_number, customer_id) values(203, 102)')
+        cur.execute('insert into Account (account_number, customer_id) values(204, 102)')
+        cur.execute('insert into Account (account_number, customer_id) values(205, 103)')
+        cur.execute('insert into Account (account_number, customer_id) values(206, 104)')
+        cur.execute('insert into Account (account_number, customer_id) values(207, 105)')
+        conn.commit()
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(301, 201, 202, 500)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(302, 202, 203, 1000)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(303, 203, 204, 1500)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(304, 204, 205, 2000)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(305, 205, 201, 2500)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(306, 206, 207, 3000)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(307, 205, 201, 3500)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(308, 205, 201, 4000)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(309, 202, 203, 4500)')
+        cur.execute('insert into Transaction '
+                    '(transaction_id, sender_account_number, receiver_account_number, amount) '
+                    'values(310, 201, 202, 5000)')
+        conn.commit()

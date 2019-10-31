@@ -2,9 +2,10 @@ import boto3
 import stack
 import functions
 from botocore.client import ClientError
-import database_creation_insertion as db
+import lambda_class
 import api_gateway
 import webbrowser
+import vpc
 
 DATA_BUCKET = "data-bucket-063"
 DATABASE_NAME = "sample_db"
@@ -17,6 +18,7 @@ LAMBDA_FUNCTION_NAME = "lambdafunction"
 API_NAME = "ApiGateway"
 HOSTING_S3_NAME = "www.week3-website.com"
 REGION = "ap-south-1"
+VPC_NAME = "vpc"
 
 
 # uploading templates and job file to S3
@@ -36,40 +38,40 @@ def upload_template_python_scripts():
     functions_obj = functions.Functions(REGION)
     functions_obj.upload_file_folder(DATA_BUCKET, "Template")
     functions_obj.upload_zip_object(DATA_BUCKET, "lambda_function.py", "lambda_function.zip", "lambda_function.zip")
+    functions_obj.upload_zip_object(DATA_BUCKET, "lambda_database_insertion.py", "lambda_database_insertion.zip",
+                                    "lambda_database_insertion.zip")
 
 
 if __name__ == "__main__":
     upload_template_python_scripts()
     stack_obj = stack.Stack(STACK_NAME, TEMPLATE_URL, DATABASE_NAME, DB_INSTANCE_IDENTIFIER, LAMBDA_FUNCTION_NAME,
-                            API_NAME, HOSTING_S3_NAME, REGION)
+                            API_NAME, HOSTING_S3_NAME, VPC_NAME, REGION)
     status = stack_obj.create_update_stack()
 
-    # creation and insertion of data to database
+    # getting the vpc endpoint id from vpc name
 
-    database_obj = db.Database(DB_INSTANCE_IDENTIFIER, USERNAME, PASSWORD, DATABASE_NAME, REGION)
-    database_obj.create_table()
-    database_obj.insert_data()
-    HOST = database_obj.get_host()
+    vpc_obj = vpc.Vpc(VPC_NAME)
+    vpc_id = vpc_obj.get_vpc_id()
+    vpc_endpoint_id = vpc_obj.get_vpc_endpoint_id(vpc_id)
 
-    # updating environment variable for lambda function
+    # updating environment variable for lambda functions.
+    # calling the database insertion lambda function for insertion of data in datbase.
 
     client_lambda = boto3.client('lambda')
-    client_lambda.update_function_configuration(
-        FunctionName=LAMBDA_FUNCTION_NAME,
-        Environment={
-            'Variables': {
-                'host': HOST,
-                'username': USERNAME,
-                'password': PASSWORD,
-                'database_name': DATABASE_NAME
-            }
-        }
-    )
+    lambda_obj = lambda_class.Lambda(LAMBDA_FUNCTION_NAME, REGION)
+    lambda_obj.set_environment_variable(DB_INSTANCE_IDENTIFIER, USERNAME, PASSWORD, DATABASE_NAME)
+    lambda_obj = lambda_class.Lambda("database_insertion", REGION)
+    lambda_obj.set_environment_variable(DB_INSTANCE_IDENTIFIER, USERNAME, PASSWORD, DATABASE_NAME)
+    lambda_obj.start_lambda()
 
-    # deployment of api gateway
+    # assigning vpc endpoint id to api.
+    # setting the policies for api to allow access of vpc endpoint.
+    # deployment of api gateway.
 
     api_gateway = api_gateway.Api(API_NAME, REGION)
     api_id = api_gateway.get_api_id()
+    api_gateway.set_policy(vpc_id)
+    api_gateway.set_vpc_endpoint(vpc_endpoint_id)
     api_gateway.create_deployment()
     print("Api Deployed")
     api_url = api_id + ".execute-api.ap-south-1.amazonaws.com/test"
