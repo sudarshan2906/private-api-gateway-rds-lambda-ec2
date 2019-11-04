@@ -11,6 +11,8 @@ Parameters:
     Type: String
   S3Name:
     Type: String
+  VpcName:
+    Type: String
 Resources:
   DataBase:
     Type: "AWS::RDS::DBInstance"
@@ -23,6 +25,28 @@ Resources:
       MasterUsername: "admin"
       MasterUserPassword: "admin123"
       DBName: !Ref DataBaseName
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      AvailabilityZone: ap-south-1a
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+  DBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: description
+      SubnetIds:
+        - !Ref PrivateSubnet
+        - !Ref PrivateSubnet2
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private RDS SG
+      GroupDescription: Private RDS SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      VpcId: !Ref VPC
   ApiGateway:
     Type: 'AWS::ApiGateway::RestApi'
     Properties:
@@ -30,7 +54,7 @@ Resources:
       Name: !Ref ApiName
       EndpointConfiguration:
         Types:
-        - "REGIONAL"
+          - "PRIVATE"
   GetMethod:
     Type: 'AWS::ApiGateway::Method'
     Properties:
@@ -64,7 +88,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName:
-        Fn::Sub: ApiRole
+        Fn::Sub: ApiRole-test
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -84,13 +108,13 @@ Resources:
                 Action: "logs:*"
                 Resource: "*"
               - Effect: Allow
-                  Action: "lambda:InvokeFunction"
-                  Resource: !GetAtt LambdaFunction.Arn
+                Action: "lambda:InvokeFunction"
+                Resource: !GetAtt LambdaFunction.Arn
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName:
-        Fn::Sub: lambdarole
+        Fn::Sub: lambdarole-test
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -108,10 +132,14 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - "rds:Describe*"
-                  - "rds:List*"
-                  - "rds:Download*"
-                Resource: !Sub arn:aws:rds:*:*:db${DbInstanceIdentifier}
+                  - "rds:*"
+                Resource: !Sub arn:aws:rds:*:*:db:${DbInstanceIdentifier}
+              - Effect: Allow
+                Action:
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:DeleteNetworkInterface"
+                Resource: "*"
   LambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -124,6 +152,37 @@ Resources:
       Role: !GetAtt LambdaRole.Arn
       Layers:
         - arn:aws:lambda:ap-south-1:193175317457:layer:pymysql:4
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+  LambdaDatabaseInsertion:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: database_insertion
+      Code:
+        S3Bucket: 'data-bucket-063'
+        S3Key: 'lambda_database_insertion.zip'
+      Handler: lambda_database_insertion.handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Layers:
+        - arn:aws:lambda:ap-south-1:193175317457:layer:pymysql:4
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private Lambda SG
+      GroupDescription: Private Lambda SG
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -146,3 +205,199 @@ Resources:
             Effect: "Allow"
             Resource: !Sub arn:aws:s3:::${S3Name}/*
             Principal: "*"
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/26
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Name
+          Value: !Ref VpcName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: IG
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.0.16/28
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: public
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: 10.0.0.0/28
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: private
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: 10.0.0.32/28
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: private2
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: public RT
+        - Key: Main
+          Value: Yes
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: private RT
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Endpoint SG
+      GroupDescription: Endpoint SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/26
+      VpcId: !Ref VPC
+  VpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument: '{
+                           "Statement": [
+                               {
+                                   "Action": "*",
+                                   "Effect": "Allow",
+                                   "Resource": "*",
+                                   "Principal": "*"
+                               }
+                           ]
+                       }'
+      ServiceName: !Sub com.amazonaws.ap-south-1.execute-api
+      VpcId: !Ref VPC
+      SubnetIds:
+        - !Ref PrivateSubnet
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt EndpointSecurityGroup.GroupId
+      VpcEndpointType: Interface
+  PublicEc2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Public Ec2 SG
+      GroupDescription: Public Ec2 SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+  PrivateEc2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private Ec2 SG
+      GroupDescription: Private Ec2 SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 10.0.0.0/26
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/26
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/26
+      VpcId: !Ref VPC
+  PublicEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-07b1360b71c3716d8
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          SubnetId: !Ref PublicSubnet
+          GroupSet:
+            - !GetAtt PublicEc2SecurityGroup.GroupId
+          DeviceIndex: "0"
+      KeyName: ec2key
+  PrivateEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-07b1360b71c3716d8
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - SubnetId: !Ref PrivateSubnet
+          GroupSet:
+            - !GetAtt PrivateEc2SecurityGroup.GroupId
+          DeviceIndex: "0"
+      KeyName: ec2key
+Outputs:
+  VPCEndpointId:
+    Description: vpc endpoint id
+    Value: !Ref VpcEndpoint
