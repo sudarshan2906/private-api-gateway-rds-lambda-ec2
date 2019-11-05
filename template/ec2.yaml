@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "-"
+
+Parameters:
+  Vpc:
+    Type: String
+  PublicSubnet:
+    Type: String
+  PrivateSubnet:
+    Type: String
+
+Resources:
+
+  PublicEc2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Public Ec2 SG
+      GroupDescription: Public Ec2 SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref Vpc
+
+  PrivateEc2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private Ec2 SG
+      GroupDescription: Private Ec2 SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 10.0.0.0/26
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/26
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/26
+      VpcId: !Ref Vpc
+
+  PublicEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-07b1360b71c3716d8
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          SubnetId: !Ref PublicSubnet
+          GroupSet:
+            - !GetAtt PublicEc2SecurityGroup.GroupId
+          DeviceIndex: "0"
+      KeyName: ec2key
+
+  PrivateEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-07b1360b71c3716d8
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - SubnetId: !Ref PrivateSubnet
+          GroupSet:
+            - !GetAtt PrivateEc2SecurityGroup.GroupId
+          DeviceIndex: "0"
+      KeyName: ec2key

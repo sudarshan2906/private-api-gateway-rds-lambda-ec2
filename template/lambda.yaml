@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "-"
+
+Parameters:
+  Vpc:
+    Type: String
+  PrivateSubnet:
+    Type: String
+  LambdaFunctionName:
+    Type: String
+  DbInstanceIdentifier:
+    Type: String
+
+Resources:
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lambdarole-week3
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      Path: /
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "rds:*"
+                Resource: !Sub arn:aws:rds:*:*:db:${DbInstanceIdentifier}
+              - Effect: Allow
+                Action:
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:DeleteNetworkInterface"
+                Resource: "*"
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Code:
+        S3Bucket: 'data-bucket-063'
+        S3Key: 'lambda_function.zip'
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Layers:
+        - arn:aws:lambda:ap-south-1:193175317457:layer:pymysql:4
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+  LambdaDatabaseInsertion:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: database_insertion
+      Code:
+        S3Bucket: 'data-bucket-063'
+        S3Key: 'lambda_database_insertion.zip'
+      Handler: lambda_database_insertion.handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Layers:
+        - arn:aws:lambda:ap-south-1:193175317457:layer:pymysql:4
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private Lambda SG
+      GroupDescription: Private Lambda SG
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref Vpc
+
+Outputs:
+  LambdaFunctionArn:
+    Value: !GetAtt LambdaFunction.Arn
+  LambdaSecurityGroup:
+    Value: !Ref LambdaSecurityGroup
