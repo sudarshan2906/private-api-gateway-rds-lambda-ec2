@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "-"
+
+Parameters:
+  DbInstanceIdentifier:
+    Type: String
+  DataBaseName:
+    Type: String
+  PrivateSubnet:
+    Type: String
+  PrivateSubnet2:
+    Type: String
+  LambdaSecurityGroup:
+    Type: String
+  Vpc:
+    Type: String
+
+Resources:
+
+  DataBase:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBInstanceIdentifier: !Ref DbInstanceIdentifier
+      AllocatedStorage: "20"
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      EngineVersion: "5.7.22"
+      MasterUsername: "admin"
+      MasterUserPassword: "admin123"
+      DBName: !Ref DataBaseName
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      AvailabilityZone: ap-south-1a
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+
+  DBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: description
+      SubnetIds:
+        - !Ref PrivateSubnet
+        - !Ref PrivateSubnet2
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Private RDS SG
+      GroupDescription: Private RDS SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      VpcId: !Ref Vpc
